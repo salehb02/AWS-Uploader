@@ -22,6 +22,16 @@ namespace DevDude.AWSUploader
         public string AccessKey;
 
         /// <summary>
+        /// Use path-style S3 URLs. Some providers require this; AWS S3 usually does not.
+        /// </summary>
+        public bool ForcePathStyle = true;
+
+        /// <summary>
+        /// Optional S3 authentication region for providers that require one.
+        /// </summary>
+        public string AuthenticationRegion;
+
+        /// <summary>
         /// Secret Key
         /// </summary>
         // public string SecretKey; // Now we read secret key from OS environment config
@@ -79,7 +89,17 @@ namespace DevDude.AWSUploader
         /// <summary>
         /// Set public flag for uploaded files
         /// </summary>
-        public bool MakeUploadedFilesPublic = true;
+        public bool MakeUploadedFilesPublic = false;
+
+        /// <summary>
+        /// Cache-Control value for Addressables catalogs and hash files.
+        /// </summary>
+        public string CatalogCacheControl = "no-cache";
+
+        /// <summary>
+        /// Cache-Control value for versioned bundles and other content files.
+        /// </summary>
+        public string ContentCacheControl = "public, max-age=31536000, immutable";
 
         /// <summary>
         /// Ignore file extensions.

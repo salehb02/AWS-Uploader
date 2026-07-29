@@ -15,7 +15,7 @@ namespace DevDude.AWSUploader
 {
     public class AWSUploader : IDisposable
     {
-        public static readonly Version VERSION = new Version(1, 0, 0);
+        public static readonly Version VERSION = new Version(1, 1, 0);
 
         private readonly UploadConfig _config;
 
@@ -48,8 +48,11 @@ namespace DevDude.AWSUploader
             var s3Config = new AmazonS3Config
             {
                 ServiceURL = config.ServiceUrl,
-                ForcePathStyle = true,
+                ForcePathStyle = config.ForcePathStyle,
             };
+
+            if (!string.IsNullOrWhiteSpace(config.AuthenticationRegion))
+                s3Config.AuthenticationRegion = config.AuthenticationRegion;
 
             _client = new AmazonS3Client(credentials, s3Config);
         }
@@ -96,22 +99,11 @@ namespace DevDude.AWSUploader
 
             var uploadErrors = new ConcurrentBag<Exception>();
 
-            var localManifest = UploadManifest.Create(_config);
-
-            ManifestData remoteManifest;
-
-            try
+            var localManifest = new ManifestData
             {
-                remoteManifest = await DownloadManifestAsync(cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (AmazonS3Exception)
-            {
-                remoteManifest = new ManifestData();
-            }
+                Files = await HashUtility.BuildManifestAsync(_config, cancellationToken)
+            };
+            var remoteManifest = await DownloadManifestAsync(cancellationToken);
 
             var plan = BuildUploadPlan(localManifest, remoteManifest);
 
@@ -127,13 +119,6 @@ namespace DevDude.AWSUploader
             int totalFiles = plan.Upload.Count;
             int completedFiles = 0;
 
-            if (totalFiles == 0)
-            {
-                Debug.Log("Nothing to upload.");
-                await UploadManifestAsync(localManifest, cancellationToken);
-                return;
-            }
-
             var uploadTasks = new List<Task>();
 
             foreach (var relativePath in plan.Upload)
@@ -141,7 +126,8 @@ namespace DevDude.AWSUploader
                 uploadTasks.Add(UploadSingleFileAsync(relativePath, semaphore, cancellationToken, totalFiles, () => Interlocked.Increment(ref completedFiles), uploadErrors));
             }
 
-            await Task.WhenAll(uploadTasks);
+            if (uploadTasks.Count > 0)
+                await Task.WhenAll(uploadTasks);
 
             if (uploadErrors.Count > 0)
             {
@@ -172,17 +158,25 @@ namespace DevDude.AWSUploader
             if (_config.CacheInvalidationProvider != null)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await InvalidateUploadedFilesAsync(plan.Upload, cancellationToken);
+                var invalidationPaths = new List<string>(plan.Upload);
+
+                if (_config.DeleteRemovedFiles)
+                    invalidationPaths.AddRange(plan.Delete);
+
+                await InvalidateFilesAsync(invalidationPaths, cancellationToken);
             }
 
             Debug.Log("Upload Finished.");
         }
 
-        private async Task InvalidateUploadedFilesAsync(List<string> uploadedFiles, CancellationToken cancellationToken)
+        private async Task InvalidateFilesAsync(List<string> relativePaths, CancellationToken cancellationToken)
         {
-            var objectKeys = new List<string>(uploadedFiles.Count);
+            if (relativePaths.Count == 0)
+                return;
 
-            foreach (var relativePath in uploadedFiles)
+            var objectKeys = new List<string>(relativePaths.Count);
+
+            foreach (var relativePath in relativePaths)
                 objectKeys.Add($"{_config.RemoteRoot}/{relativePath}".Replace("\\", "/"));
 
             await _config.CacheInvalidationProvider.InvalidateAsync(objectKeys, cancellationToken);
@@ -247,6 +241,8 @@ namespace DevDude.AWSUploader
                         ContentType = GetContentType(localFile)
                     };
 
+                    SetCacheControl(request, GetCacheControl(localFile));
+
                     if (_config.MakeUploadedFilesPublic)
                         request.CannedACL = S3CannedACL.PublicRead;
 
@@ -289,39 +285,39 @@ namespace DevDude.AWSUploader
             if (files == null || files.Count == 0)
                 return;
 
-            var objects = new List<KeyVersion>();
+            const int maxObjectsPerRequest = 1000;
 
-            foreach (var file in files)
+            for (var start = 0; start < files.Count; start += maxObjectsPerRequest)
             {
-                var key = $"{_config.RemoteRoot}/{file}".Replace("\\", "/");
+                token.ThrowIfCancellationRequested();
+                var count = Math.Min(maxObjectsPerRequest, files.Count - start);
+                var objects = new List<KeyVersion>(count);
 
-                objects.Add(new KeyVersion
+                for (var index = start; index < start + count; index++)
                 {
-                    Key = key
-                });
-            }
+                    var key = $"{_config.RemoteRoot}/{files[index]}".Replace("\\", "/");
 
-            var request = new DeleteObjectsRequest
-            {
-                BucketName = _config.BucketName,
-                Objects = objects
-            };
-
-            var response = await _client.DeleteObjectsAsync(request, token);
-
-            foreach (var deleted in response.DeletedObjects)
-            {
-                Debug.Log($"Deleted: {deleted.Key}");
-            }
-
-            if (response.DeleteErrors.Count > 0)
-            {
-                foreach (var error in response.DeleteErrors)
-                {
-                    Debug.LogError($"Delete failed: {error.Key} - {error.Message}");
+                    objects.Add(new KeyVersion { Key = key });
                 }
 
-                throw new Exception($"Failed deleting {response.DeleteErrors.Count} objects.");
+                var request = new DeleteObjectsRequest
+                {
+                    BucketName = _config.BucketName,
+                    Objects = objects
+                };
+
+                var response = await _client.DeleteObjectsAsync(request, token);
+
+                foreach (var deleted in response.DeletedObjects)
+                    Debug.Log($"Deleted: {deleted.Key}");
+
+                if (response.DeleteErrors.Count > 0)
+                {
+                    foreach (var error in response.DeleteErrors)
+                        Debug.LogError($"Delete failed: {error.Key} - {error.Message}");
+
+                    throw new Exception($"Failed deleting {response.DeleteErrors.Count} objects.");
+                }
             }
         }
 
@@ -384,6 +380,20 @@ namespace DevDude.AWSUploader
 
                 _ => "application/octet-stream"
             };
+        }
+
+        private string GetCacheControl(string filePath)
+        {
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            return extension == ".json" || extension == ".hash"
+                ? _config.CatalogCacheControl
+                : _config.ContentCacheControl;
+        }
+
+        private static void SetCacheControl(PutObjectRequest request, string cacheControl)
+        {
+            if (!string.IsNullOrWhiteSpace(cacheControl))
+                request.Headers.CacheControl = cacheControl;
         }
 
         private async Task ValidateAsync(CancellationToken cancellationToken)
@@ -494,6 +504,8 @@ namespace DevDude.AWSUploader
                 InputStream = stream,
                 ContentType = "application/json"
             };
+
+            SetCacheControl(request, _config.CatalogCacheControl);
 
             await _client.PutObjectAsync(request, cancellationToken);
         }

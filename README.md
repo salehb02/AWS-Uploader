@@ -18,7 +18,7 @@ https://github.com/salehb02/AWS-Uploader.git
 Or install a specific version:
 
 ```text
-https://github.com/salehb02/AWS-Uploader.git#1.0.0
+https://github.com/salehb02/AWS-Uploader.git#1.1.0
 ```
 
 6. Click **Add** and wait for Unity to import the package.
@@ -39,6 +39,11 @@ https://github.com/salehb02/AWS-Uploader.git#1.0.0
 
 Store the S3 secret in the `S3_SECRET_KEY` operating-system environment variable. The legacy
 `AWS_SECRET_KEY` name remains supported for backwards compatibility.
+
+For each upload settings asset, configure whether your S3 provider uses path-style URLs, the
+optional authentication region, object visibility, and cache-control values. The secure default
+keeps uploaded objects private; enable public uploads only when your CDN/origin configuration
+requires it.
 
 ---
 
@@ -63,8 +68,9 @@ only object keys uploaded in the current run to the configured `ICacheInvalidati
 4. Store it in the `ARVAN_API_KEY` operating-system environment variable and restart Unity and Unity Hub.
 
 The API key may be stored with or without the `Apikey ` prefix. Purging runs only after every file
-and the upload manifest have been uploaded successfully. A purge failure is reported as an upload
-error so a stale CDN deployment is not silently treated as successful.
+and the upload manifest have been uploaded successfully. Uploads and deletions are invalidated;
+purge requests are sent in batches and retried on request failures. A purge failure is reported as
+an upload error so a stale CDN deployment is not silently treated as successful.
 
 ### Supporting another CDN
 

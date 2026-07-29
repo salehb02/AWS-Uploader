@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace DevDude.AWSUploader
 {
@@ -36,10 +38,26 @@ namespace DevDude.AWSUploader
         /// </summary>
         public static Dictionary<string, string> BuildManifest(UploadConfig config)
         {
+            return BuildManifest(config, CancellationToken.None);
+        }
+
+        public static Task<Dictionary<string, string>> BuildManifestAsync(
+            UploadConfig config,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.Run(() => BuildManifest(config, cancellationToken), cancellationToken);
+        }
+
+        private static Dictionary<string, string> BuildManifest(
+            UploadConfig config,
+            CancellationToken cancellationToken)
+        {
             var manifest = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var file in Directory.GetFiles(config.LocalFolder, "*", SearchOption.AllDirectories))
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 if (ShouldIgnore(file, config))
                     continue;
 

@@ -9,6 +9,8 @@ namespace DevDude.AWSUploader.Editor
         public string serviceUrl;
         public string bucketName;
         public string accessKey;
+        public bool forcePathStyle = true;
+        public string authenticationRegion;
 
         [Header("Local")]
         public string localFolder;
@@ -25,6 +27,13 @@ namespace DevDude.AWSUploader.Editor
         public int retryCount = 3;
 
         public bool deleteRemovedFiles = false;
+        public bool makeUploadedFilesPublic = false;
+
+        [Tooltip("Cache-Control for catalog and .hash files.")]
+        public string catalogCacheControl = "no-cache";
+
+        [Tooltip("Cache-Control for versioned bundles and other content files.")]
+        public string contentCacheControl = "public, max-age=31536000, immutable";
 
         [Header("Cache Invalidation")]
         [Tooltip("Optional CDN/cache provider to invalidate after a successful upload.")]

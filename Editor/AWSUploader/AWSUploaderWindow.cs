@@ -17,6 +17,7 @@ namespace DevDude.AWSUploader.Editor
         private Vector2 _logScroll;
         private CancellationTokenSource _cancellationSource;
         private bool _isUploading;
+        private bool _isGeneratingPlan;
         private string _log = "";
         private readonly ConcurrentQueue<UploadProgressData> _progressQueue = new();
         private float _currentProgress;
@@ -92,7 +93,7 @@ namespace DevDude.AWSUploader.Editor
                 EditorGUILayout.TextArea(_planText, GUILayout.Height(250));
             }
 
-            using (new EditorGUI.DisabledScope(_isUploading))
+            using (new EditorGUI.DisabledScope(_isUploading || _isGeneratingPlan))
             {
                 if (GUILayout.Button("Detect Latest Addressables Build"))
                 {
@@ -100,7 +101,7 @@ namespace DevDude.AWSUploader.Editor
                 }
             }
 
-            using (new EditorGUI.DisabledScope(_isUploading || _settings == null))
+            using (new EditorGUI.DisabledScope(_isUploading || _isGeneratingPlan || _settings == null))
             {
                 if (GUILayout.Button("Generate Upload Plan"))
                 {
@@ -279,9 +280,10 @@ namespace DevDude.AWSUploader.Editor
                 }
             }
 
-            if (_currentPlan.Upload.Count == 0)
+            if (_currentPlan.Upload.Count == 0 &&
+                (!_settings.deleteRemovedFiles || _currentPlan.Delete.Count == 0))
             {
-                error = "Nothing to upload.";
+                error = "Nothing to upload or delete.";
                 return false;
             }
 
@@ -306,12 +308,17 @@ namespace DevDude.AWSUploader.Editor
                 ServiceUrl = _settings.serviceUrl,
                 BucketName = _settings.bucketName,
                 AccessKey = _settings.accessKey,
+                ForcePathStyle = _settings.forcePathStyle,
+                AuthenticationRegion = _settings.authenticationRegion,
                 RemoteFolder = _settings.remoteFolder,
                 ManifestFileName = _settings.manifestFileName,
                 LocalFolder = _localFolder,
                 ParallelUploads = _settings.parallelUploads,
                 RetryCount = _settings.retryCount,
                 DeleteRemovedFiles = _settings.deleteRemovedFiles,
+                MakeUploadedFilesPublic = _settings.makeUploadedFilesPublic,
+                CatalogCacheControl = _settings.catalogCacheControl,
+                ContentCacheControl = _settings.contentCacheControl,
                 CacheInvalidationProvider = CreateCacheInvalidationProvider(),
                 RemoteRoot =
                     $"{_settings.remoteFolder}/" +
@@ -352,6 +359,8 @@ namespace DevDude.AWSUploader.Editor
                 return;
             }
 
+            _isGeneratingPlan = true;
+
             try
             {
                 _log = "Generating plan...\n";
@@ -362,7 +371,10 @@ namespace DevDude.AWSUploader.Editor
 
                 _log += "Creating local manifest...\n";
 
-                var localManifest = UploadManifest.Create(config);
+                var localManifest = new ManifestData
+                {
+                    Files = await HashUtility.BuildManifestAsync(config)
+                };
 
                 _log += $"Local files: {localManifest.Files.Count}\n";
 
@@ -379,6 +391,10 @@ namespace DevDude.AWSUploader.Editor
             catch (Exception e)
             {
                 _log += "\nERROR:\n" + e;
+            }
+            finally
+            {
+                _isGeneratingPlan = false;
             }
 
             Repaint();

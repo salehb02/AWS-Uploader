@@ -17,10 +17,17 @@ namespace DevDude.AWSUploader.CacheInvalidation.ArvanCloud
         private readonly HttpClient _client;
         private readonly string _apiBaseUrl;
         private readonly string _domain;
+        private readonly int _maxUrlsPerRequest;
+        private readonly int _retryCount;
 
         public string ProviderName => "ArvanCloud CDN";
 
-        public ArvanCloudCacheInvalidationProvider(string apiBaseUrl, string domain, string apiKey)
+        public ArvanCloudCacheInvalidationProvider(
+            string apiBaseUrl,
+            string domain,
+            string apiKey,
+            int maxUrlsPerRequest = 100,
+            int retryCount = 3)
         {
             if (string.IsNullOrWhiteSpace(apiBaseUrl))
                 throw new ArgumentException("Arvan CDN API URL is empty.", nameof(apiBaseUrl));
@@ -31,8 +38,16 @@ namespace DevDude.AWSUploader.CacheInvalidation.ArvanCloud
             if (string.IsNullOrWhiteSpace(apiKey))
                 throw new ArgumentException("ARVAN_API_KEY environment variable is missing.", nameof(apiKey));
 
+            if (maxUrlsPerRequest < 1)
+                throw new ArgumentOutOfRangeException(nameof(maxUrlsPerRequest));
+
+            if (retryCount < 1)
+                throw new ArgumentOutOfRangeException(nameof(retryCount));
+
             _apiBaseUrl = apiBaseUrl.TrimEnd('/');
             _domain = NormalizeDomain(domain);
+            _maxUrlsPerRequest = maxUrlsPerRequest;
+            _retryCount = retryCount;
             _client = new HttpClient();
             _client.DefaultRequestHeaders.TryAddWithoutValidation(
                 "Authorization",
@@ -57,6 +72,51 @@ namespace DevDude.AWSUploader.CacheInvalidation.ArvanCloud
                 urls.Add($"https://{_domain}/{EscapePath(path)}");
             }
 
+            for (var start = 0; start < urls.Count; start += _maxUrlsPerRequest)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var count = Math.Min(_maxUrlsPerRequest, urls.Count - start);
+                var batch = urls.GetRange(start, count);
+
+                await PurgeBatchWithRetryAsync(batch, cancellationToken);
+            }
+        }
+
+        private async Task PurgeBatchWithRetryAsync(
+            List<string> urls,
+            CancellationToken cancellationToken)
+        {
+            Exception lastException = null;
+
+            for (var attempt = 1; attempt <= _retryCount; attempt++)
+            {
+                try
+                {
+                    await PurgeBatchAsync(urls, cancellationToken);
+                    return;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (HttpRequestException exception)
+                {
+                    lastException = exception;
+
+                    if (attempt == _retryCount)
+                        break;
+
+                    await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), cancellationToken);
+                }
+            }
+
+            throw new HttpRequestException(
+                $"Arvan CDN cache purge failed after {_retryCount} attempts.",
+                lastException);
+        }
+
+        private async Task PurgeBatchAsync(List<string> urls, CancellationToken cancellationToken)
+        {
             var body = JsonConvert.SerializeObject(new
             {
                 purge = "individual",
