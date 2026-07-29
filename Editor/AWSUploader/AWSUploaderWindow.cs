@@ -409,7 +409,16 @@ namespace DevDude.AWSUploader.Editor
             try
             {
                 var platformFolder = GetPlatformFolder();
-                var root = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "ServerData", _settings.localFolder);
+                var serverDataRoot = Path.GetFullPath(
+                    Path.Combine(Directory.GetParent(Application.dataPath).FullName, "ServerData"));
+                var root = Path.GetFullPath(Path.Combine(serverDataRoot, _settings.localFolder));
+
+                if (!root.StartsWith(serverDataRoot + Path.DirectorySeparatorChar,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    _log = "Local folder must be a relative path inside the project's ServerData directory.";
+                    return;
+                }
 
                 if (!Directory.Exists(root))
                 {
@@ -444,7 +453,7 @@ namespace DevDude.AWSUploader.Editor
 
                 _log =
                     $"Latest Build Found\n\n" +
-                    $"Game: {_settings.localFolder}\n" +
+                    $"Local folder: {_settings.localFolder}\n" +
                     $"Platform: {platformFolder}\n" +
                     $"Version: {_detectedVersion}\n" +
                     $"Path: {_detectedBuildPath}";

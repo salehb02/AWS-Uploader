@@ -13,6 +13,7 @@ namespace DevDude.AWSUploader.Editor
         public string authenticationRegion;
 
         [Header("Local")]
+        [Tooltip("Any relative folder path below the project's ServerData directory. Nested paths are supported.")]
         public string localFolder;
 
         [Header("Remote")]
