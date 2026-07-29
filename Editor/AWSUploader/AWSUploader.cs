@@ -343,7 +343,7 @@ namespace DevDude.AWSUploader
             return extension switch
             {
                 ".json" => "application/json",
-                ".hash" => "text/plain",
+                ".hash" => "application/octet-stream",
 
                 ".bundle" => "application/octet-stream",
                 ".bytes" => "application/octet-stream",
