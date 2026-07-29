@@ -37,6 +37,9 @@ https://github.com/salehb02/AWS-Uploader.git#1.0.0
   - Backblaze B2 S3
   - Any S3-compatible provider
 
+Store the S3 secret in the `S3_SECRET_KEY` operating-system environment variable. The legacy
+`AWS_SECRET_KEY` name remains supported for backwards compatibility.
+
 ---
 
 ## Verify Installation
@@ -45,4 +48,43 @@ After the package is installed, the uploader window will be available from:
 
 ```
 Tools → DevDude → Addressables Uploader
+```
+
+## Cache invalidation
+
+Cache invalidation is provider-based and independent from the S3 implementation. The uploader sends
+only object keys uploaded in the current run to the configured `ICacheInvalidationProvider`.
+
+### ArvanCloud
+
+1. Select `ArvanCloud` under `Cache Invalidation Provider` in your `AWSUploadSettings` asset.
+2. Set `Cdn Domain` to the domain configured in ArvanCloud CDN (for example, `cdn.example.com`).
+3. Create an ArvanCloud API key with CDN cache purge permission.
+4. Store it in the `ARVAN_API_KEY` operating-system environment variable and restart Unity and Unity Hub.
+
+The API key may be stored with or without the `Apikey ` prefix. Purging runs only after every file
+and the upload manifest have been uploaded successfully. A purge failure is reported as an upload
+error so a stale CDN deployment is not silently treated as successful.
+
+### Supporting another CDN
+
+Implement `ICacheInvalidationProvider`, then assign an instance to
+`UploadConfig.CacheInvalidationProvider`. Editor integrations can add their provider to
+`CacheInvalidationProviderType` and construct it in `AWSUploaderWindow.CreateCacheInvalidationProvider`.
+
+```csharp
+public sealed class MyCacheProvider : ICacheInvalidationProvider
+{
+    public string ProviderName => "My CDN";
+
+    public Task InvalidateAsync(
+        IReadOnlyCollection<string> objectKeys,
+        CancellationToken cancellationToken = default)
+    {
+        // Convert object keys to the format expected by the provider and call its API.
+        return Task.CompletedTask;
+    }
+
+    public void Dispose() { }
+}
 ```

@@ -1,12 +1,13 @@
 using System.Collections.Generic;
+using DevDude.AWSUploader.CacheInvalidation;
 
 namespace DevDude.AWSUploader
 {
     public class UploadConfig
     {
         /// <summary>
-        /// Arvan S3 Endpoint
-        /// Example: https://s3.ir-thr-at1.arvanstorage.ir
+        /// S3-compatible endpoint.
+        /// Example: https://s3.example.com
         /// </summary>
         public string ServiceUrl;
 
@@ -107,5 +108,12 @@ namespace DevDude.AWSUploader
         /// Final remote root address
         /// </summary>
         public string RemoteRoot;
+
+        /// <summary>
+        /// Optional cache implementation. When set, successfully uploaded object keys are
+        /// invalidated after the files and manifest have been uploaded.
+        /// Ownership is transferred to AWSUploader and it is disposed with the uploader.
+        /// </summary>
+        public ICacheInvalidationProvider CacheInvalidationProvider;
     }
 }

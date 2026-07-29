@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DevDude.AWSUploader.CacheInvalidation;
+using DevDude.AWSUploader.CacheInvalidation.ArvanCloud;
 using UnityEditor;
 using UnityEngine;
 
@@ -256,6 +258,27 @@ namespace DevDude.AWSUploader.Editor
                 return false;
             }
 
+            if (_settings.cacheInvalidationProvider == CacheInvalidationProviderType.ArvanCloud)
+            {
+                if (string.IsNullOrWhiteSpace(_settings.cdnDomain))
+                {
+                    error = "Arvan CDN domain is empty.";
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(_settings.arvanCdnApiUrl))
+                {
+                    error = "Arvan CDN API URL is empty.";
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ARVAN_API_KEY")))
+                {
+                    error = "ARVAN_API_KEY environment variable is missing. Add it, then restart Unity and Unity Hub.";
+                    return false;
+                }
+            }
+
             if (_currentPlan.Upload.Count == 0)
             {
                 error = "Nothing to upload.";
@@ -289,11 +312,31 @@ namespace DevDude.AWSUploader.Editor
                 ParallelUploads = _settings.parallelUploads,
                 RetryCount = _settings.retryCount,
                 DeleteRemovedFiles = _settings.deleteRemovedFiles,
+                CacheInvalidationProvider = CreateCacheInvalidationProvider(),
                 RemoteRoot =
                     $"{_settings.remoteFolder}/" +
                     $"{_detectedVersion}/" +
                     $"{GetPlatformFolder()}"
             };
+        }
+
+        private ICacheInvalidationProvider CreateCacheInvalidationProvider()
+        {
+            switch (_settings.cacheInvalidationProvider)
+            {
+                case CacheInvalidationProviderType.None:
+                    return null;
+
+                case CacheInvalidationProviderType.ArvanCloud:
+                    return new ArvanCloudCacheInvalidationProvider(
+                        _settings.arvanCdnApiUrl,
+                        _settings.cdnDomain,
+                        Environment.GetEnvironmentVariable("ARVAN_API_KEY"));
+
+                default:
+                    throw new NotSupportedException(
+                        $"Cache invalidation provider is not supported: {_settings.cacheInvalidationProvider}");
+            }
         }
 
         private void CancelUpload()

@@ -30,11 +30,17 @@ namespace DevDude.AWSUploader
         {
             _config = config;
 
-            var secretKey = Environment.GetEnvironmentVariable("AWS_SECRET_KEY");
+            var secretKey =
+                Environment.GetEnvironmentVariable("S3_SECRET_KEY") ??
+                Environment.GetEnvironmentVariable("AWS_SECRET_KEY");
 
             if (string.IsNullOrEmpty(secretKey))
             {
-                throw new Exception("AWS_SECRET_KEY environment variable is missing. Add it to your system environment variables then restart Unity and Unity Hub.");
+                _config.CacheInvalidationProvider?.Dispose();
+                throw new Exception(
+                    "S3_SECRET_KEY environment variable is missing. " +
+                    "AWS_SECRET_KEY is also supported for backwards compatibility. " +
+                    "Add one of them to your system environment variables then restart Unity and Unity Hub.");
             }
 
             var credentials = new BasicAWSCredentials(config.AccessKey, secretKey);
@@ -67,6 +73,7 @@ namespace DevDude.AWSUploader
             if (disposing)
             {
                 _client?.Dispose();
+                _config.CacheInvalidationProvider?.Dispose();
             }
 
             _disposed = true;
@@ -162,7 +169,26 @@ namespace DevDude.AWSUploader
 
             await UploadManifestAsync(localManifest, cancellationToken);
 
+            if (_config.CacheInvalidationProvider != null)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await InvalidateUploadedFilesAsync(plan.Upload, cancellationToken);
+            }
+
             Debug.Log("Upload Finished.");
+        }
+
+        private async Task InvalidateUploadedFilesAsync(List<string> uploadedFiles, CancellationToken cancellationToken)
+        {
+            var objectKeys = new List<string>(uploadedFiles.Count);
+
+            foreach (var relativePath in uploadedFiles)
+                objectKeys.Add($"{_config.RemoteRoot}/{relativePath}".Replace("\\", "/"));
+
+            await _config.CacheInvalidationProvider.InvalidateAsync(objectKeys, cancellationToken);
+            Debug.Log(
+                $"{_config.CacheInvalidationProvider.ProviderName} cache invalidated " +
+                $"for {objectKeys.Count} uploaded files.");
         }
 
         private async Task UploadSingleFileAsync(string relativePath, SemaphoreSlim semaphore, CancellationToken cancellationToken, int totalFiles, Func<int> incrementCompleted, ConcurrentBag<Exception> uploadErrors)
