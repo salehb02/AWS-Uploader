@@ -238,7 +238,8 @@ namespace DevDude.AWSUploader
                         BucketName = _config.BucketName,
                         Key = key,
                         FilePath = localFile,
-                        ContentType = GetContentType(localFile)
+                        ContentType = GetContentType(localFile),
+                        UseChunkEncoding = false
                     };
 
                     SetCacheControl(request, GetCacheControl(localFile));
@@ -502,7 +503,8 @@ namespace DevDude.AWSUploader
                 BucketName = _config.BucketName,
                 Key = key,
                 InputStream = stream,
-                ContentType = "application/json"
+                ContentType = "application/json",
+                UseChunkEncoding = false
             };
 
             SetCacheControl(request, _config.CatalogCacheControl);
@@ -519,6 +521,12 @@ namespace DevDude.AWSUploader
 
             foreach (var localFile in localManifest.Files)
             {
+                if (!_config.UploadChangedFilesOnly)
+                {
+                    plan.Upload.Add(localFile.Key);
+                    continue;
+                }
+
                 if (!remoteManifest.Files.TryGetValue(localFile.Key, out var remoteHash))
                 {
                     // New File

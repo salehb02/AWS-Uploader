@@ -58,6 +58,9 @@ The default cache headers are suitable for versioned Addressables builds:
 - `catalogCacheControl`: `no-cache` for catalog and `.hash` files
 - `contentCacheControl`: `public, max-age=31536000, immutable` for bundles and versioned content
 
+`uploadChangedFilesOnly` is enabled by default. Disable it for one deployment when you need to
+replace every remote file without changing its contents, such as after correcting S3 metadata.
+
 Adjust them if your release/versioning strategy differs.
 
 `localFolder` must remain relative to `ServerData`; absolute paths and paths that escape that
@@ -130,3 +133,4 @@ it in the Editor settings, add it to `CacheInvalidationProviderType` and constru
 | No files are uploaded | Generate a new plan; unchanged files are intentionally skipped. |
 | CDN still serves stale files | Confirm the public CDN domain is used for `cdnDomain`, the API key has purge permission, and the CDN points at the same S3 paths. |
 | Files return `AccessDenied` | Enable `makeUploadedFilesPublic` only if your origin/CDN setup needs public object ACLs, or configure private-origin access in the CDN. |
+| Unity reports an unsupported `Content-Encoding` | This package uploads with S3 chunked encoding disabled. Disable `uploadChangedFilesOnly` for one deployment to overwrite previously affected files, then enable it again. |

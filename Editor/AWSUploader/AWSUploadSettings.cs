@@ -28,6 +28,8 @@ namespace DevDude.AWSUploader.Editor
         public int retryCount = 3;
 
         public bool deleteRemovedFiles = false;
+        [Tooltip("When disabled, uploads every local file. Use once to replace files uploaded with incorrect metadata.")]
+        public bool uploadChangedFilesOnly = true;
         public bool makeUploadedFilesPublic = false;
 
         [Tooltip("Cache-Control for catalog and .hash files.")]

@@ -316,6 +316,7 @@ namespace DevDude.AWSUploader.Editor
                 ParallelUploads = _settings.parallelUploads,
                 RetryCount = _settings.retryCount,
                 DeleteRemovedFiles = _settings.deleteRemovedFiles,
+                UploadChangedFilesOnly = _settings.uploadChangedFilesOnly,
                 MakeUploadedFilesPublic = _settings.makeUploadedFilesPublic,
                 CatalogCacheControl = _settings.catalogCacheControl,
                 ContentCacheControl = _settings.contentCacheControl,
